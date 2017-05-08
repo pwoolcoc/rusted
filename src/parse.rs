@@ -8,7 +8,7 @@ pub struct LineRange(Option<LineAddr>, Mode, Option<LineAddr>);
 
 impl LineRange {
     pub fn everything() -> LineRange {
-        LineRange(Some(LineAddr::Caret), Mode::Comma, Some(LineAddr::DollarSign))
+        LineRange(Some(LineAddr::Number(1)), Mode::Comma, Some(LineAddr::DollarSign))
     }
 
     pub fn current_line() -> LineRange {
@@ -16,7 +16,7 @@ impl LineRange {
     }
 
     pub fn resolve(self, buffer: &Buffer, config: &Config) -> (usize, usize) {
-        (self.0.unwrap_or(LineAddr::Caret).resolve(buffer, config),
+        (self.0.unwrap_or(LineAddr::Number(1)).resolve(buffer, config),
          self.2.unwrap_or(LineAddr::DollarSign).resolve(buffer, config))
     }
 }
@@ -24,7 +24,6 @@ impl LineRange {
 #[derive(Debug, PartialEq, Clone)]
 pub enum LineAddr {
     Number(u64),
-    Caret,
     DollarSign,
     Period,
 }
@@ -33,7 +32,6 @@ impl LineAddr {
     pub fn resolve(self, buffer: &Buffer, config: &Config) -> usize {
         match self {
             LineAddr::Number(n) => (n - 1) as usize,
-            LineAddr::Caret => 0usize,
             LineAddr::DollarSign => {
                 buffer.len() - 1
             },
@@ -69,11 +67,6 @@ named!(dollar_sign<&str, LineAddr>,
             tag!("$") >>
             (LineAddr::DollarSign)));
 
-named!(caret<&str, LineAddr>,
-        do_parse!(
-            tag!("^") >>
-            (LineAddr::Caret)));
-
 named!(period<&str, LineAddr>,
         do_parse!(
             tag!(".") >>
@@ -81,7 +74,6 @@ named!(period<&str, LineAddr>,
 
 named!(line_addr<&str, LineAddr>, alt!(
               period
-            | caret
             | dollar_sign
             | number
 ));
