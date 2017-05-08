@@ -14,6 +14,7 @@ pub enum Command {
     Delete(Option<LineRange>),
     SaveFile(Option<LineRange>, String),
     SaveAndQuit(Option<LineRange>, String),
+    SaveAppend(Option<LineRange>, String),
     Quit,
     HardQuit,
 }
@@ -145,6 +146,30 @@ impl Command {
                 save_file(start, end, &filename, buffer, cfg).and_then(|_| {
                         quit(cfg)
                 })
+            },
+            Command::SaveAppend(range, filename) => {
+                let range = range.unwrap_or(LineRange::everything())
+                                 .resolve(buffer, cfg);
+                let start = range.0;
+                let end = range.1 + 1;
+                let path = Path::new(&filename);
+                if !path.exists() {
+                    println!("{}", &format!("NOT SAVED. File does not exist: {}", filename));
+                    return Ok(());
+                }
+                let mut fp = match OpenOptions::new().append(true).open(&path) {
+                    Ok(f) => f,
+                    Err(_) => {
+                        // todo stderr
+                        println!("Could not open file");
+                        return Err(255);
+                    }
+                };
+                for idx in start..end {
+                    let _ = writeln!(fp, "{}", buffer[idx]);
+                }
+                cfg.dirty = false;
+                Ok(())
             },
             Command::HardQuit => Err(0),
             Command::Quit => {

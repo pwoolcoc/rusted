@@ -143,6 +143,15 @@ named!(save_file<&str, Command>,
                 (Command::SaveFile(range, filename.into()))
 ));
 
+named!(save_append<&str, Command>,
+        do_parse!(
+            range: opt!(range) >>
+            tag!("W") >>
+            call!(nom::multispace) >>
+            filename: call!(nom::rest_s) >>
+            (Command::SaveAppend(range, filename.into()))
+));
+
 named!(save_and_quit<&str, Command>,
         do_parse!(
             range: opt!(range) >>
@@ -162,6 +171,7 @@ named!(pub parse_line< &str, Command >,
             | append_text
             | delete
             | save_file
+            | save_append
             | save_and_quit
         )
 );
