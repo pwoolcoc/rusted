@@ -139,8 +139,8 @@ named!(save_file<&str, Command>,
                 range: opt!(range) >>
                 tag!("w") >>
                 call!(nom::multispace) >>
-                filename: call!(nom::rest_s) >>
-                (Command::SaveFile(range, filename.into()))
+                filename: opt!(call!(nom::rest_s)) >>
+                (Command::SaveFile(range, filename.map(|s| s.into())))
 ));
 
 named!(save_append<&str, Command>,
@@ -148,8 +148,8 @@ named!(save_append<&str, Command>,
             range: opt!(range) >>
             tag!("W") >>
             call!(nom::multispace) >>
-            filename: call!(nom::rest_s) >>
-            (Command::SaveAppend(range, filename.into()))
+            filename: opt!(call!(nom::rest_s)) >>
+            (Command::SaveAppend(range, filename.map(|s| s.into())))
 ));
 
 named!(save_and_quit<&str, Command>,
@@ -157,8 +157,8 @@ named!(save_and_quit<&str, Command>,
             range: opt!(range) >>
             tag!("wq") >>
             call!(nom::multispace) >>
-            filename: call!(nom::rest_s) >>
-            (Command::SaveAndQuit(range, filename.into()))
+            filename: opt!(call!(nom::rest_s)) >>
+            (Command::SaveAndQuit(range, filename.map(|s| s.into())))
 ));
 
 named!(pub parse_line< &str, Command >,

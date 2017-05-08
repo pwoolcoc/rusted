@@ -12,9 +12,9 @@ pub enum Command {
     ToggleShowPrompt,
     AppendText(Option<LineAddr>),
     Delete(Option<LineRange>),
-    SaveFile(Option<LineRange>, String),
-    SaveAndQuit(Option<LineRange>, String),
-    SaveAppend(Option<LineRange>, String),
+    SaveFile(Option<LineRange>, Option<String>),
+    SaveAndQuit(Option<LineRange>, Option<String>),
+    SaveAppend(Option<LineRange>, Option<String>),
     Quit,
     HardQuit,
 }
@@ -33,29 +33,51 @@ pub fn input_mode() -> Vec<String> {
     inp
 }
 
+fn get_filename(filename: Option<String>, cfg: &mut Config) -> Option<String> {
+    let set_default = cfg.default_filename.is_none();
+    match filename {
+        Some( f) => {
+            if set_default {
+                cfg.default_filename = Some(f.to_owned());
+            }
+            Some(f)
+        },
+        None => {
+            None
+        }
+    }
+}
+
 fn save_file(start: usize, end: usize,
-               filename: &str, buffer: &mut Buffer,
+                open_options: &mut OpenOptions,
+                filename: Option<String>, buffer: &mut Buffer,
                 cfg: &mut Config) -> ::std::result::Result<(), u8>
 {
+    let filename = match get_filename(filename, cfg) {
+        Some(f) => f,
+        None => return Err(1),
+    };
+
     if filename.trim().starts_with("!") {
-        // send to stdin of external command
-    } else {
-        let path = Path::new(&filename);
-        if !path.exists() {
-            println!("{}", &format!("NOT SAVED. File does not exist: {}", filename));
-            return Ok(());
+        // system command
+        return Ok(());
+    }
+
+    let path = Path::new(&filename);
+    if !path.exists() {
+        println!("{}", &format!("NOT SAVED. File does not exist: {}", filename));
+        return Ok(());
+    }
+    let mut fp = match open_options.open(&path) {
+        Ok(f) => f,
+        Err(_) => {
+            // todo stderr
+            println!("Could not open file");
+            return Err(255);
         }
-        let mut fp = match OpenOptions::new().write(true).open(&path) {
-            Ok(f) => f,
-            Err(_) => {
-                // todo stderr
-                println!("Could not open file");
-                return Err(255);
-            }
-        };
-        for idx in start..end {
-            let _ = writeln!(fp, "{}", buffer[idx]);
-        }
+    };
+    for idx in start..end {
+        let _ = writeln!(fp, "{}", buffer[idx]);
     }
     cfg.dirty = false;
     Ok(())
@@ -136,14 +158,16 @@ impl Command {
                                  .resolve(buffer, cfg);
                 let start = range.0;
                 let end = range.1 + 1;
-                save_file(start, end, &filename, buffer, cfg)
+                let mut oo = OpenOptions::new();
+                save_file(start, end, oo.write(true), filename, buffer, cfg)
             },
             Command::SaveAndQuit(range, filename) => {
                 let range = range.unwrap_or(LineRange::everything())
                                  .resolve(buffer, cfg);
                 let start = range.0;
                 let end = range.1 + 1;
-                save_file(start, end, &filename, buffer, cfg).and_then(|_| {
+                let mut oo = OpenOptions::new();
+                save_file(start, end, oo.write(true), filename, buffer, cfg).and_then(|_| {
                         quit(cfg)
                 })
             },
@@ -152,24 +176,8 @@ impl Command {
                                  .resolve(buffer, cfg);
                 let start = range.0;
                 let end = range.1 + 1;
-                let path = Path::new(&filename);
-                if !path.exists() {
-                    println!("{}", &format!("NOT SAVED. File does not exist: {}", filename));
-                    return Ok(());
-                }
-                let mut fp = match OpenOptions::new().append(true).open(&path) {
-                    Ok(f) => f,
-                    Err(_) => {
-                        // todo stderr
-                        println!("Could not open file");
-                        return Err(255);
-                    }
-                };
-                for idx in start..end {
-                    let _ = writeln!(fp, "{}", buffer[idx]);
-                }
-                cfg.dirty = false;
-                Ok(())
+                let mut oo = OpenOptions::new();
+                save_file(start, end, oo.append(true), filename, buffer, cfg)
             },
             Command::HardQuit => Err(0),
             Command::Quit => {
