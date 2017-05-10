@@ -33,7 +33,11 @@ impl LineAddr {
         match self {
             LineAddr::Number(n) => (n - 1) as usize,
             LineAddr::DollarSign => {
-                buffer.len() - 1
+                if buffer.len() > 1 {
+                    buffer.len() - 1
+                } else {
+                    0
+                }
             },
             LineAddr::Period => config.current_index as usize,
         }
@@ -137,11 +141,15 @@ named!(append_text<&str, Command>,
 named!(save_file<&str, Command>,
         do_parse!(
                 range: opt!(range) >>
-                tag!("w") >>
-                call!(nom::multispace) >>
-                filename: opt!(call!(nom::rest_s)) >>
-                (Command::SaveFile(range, filename.map(|s| s.into())))
-));
+                filename: alt_complete!(
+                      separated_pair!(
+                          tag!("w"), call!(nom::multispace), call!(nom::rest_s)) => {|r: (_, &str)| 
+                              Some(r.1.into())
+                          }
+                    | tag!("w") => {|_| None}
+                ) >>
+                (Command::SaveFile(range, filename)))
+);
 
 named!(save_append<&str, Command>,
         do_parse!(
@@ -161,6 +169,26 @@ named!(save_and_quit<&str, Command>,
             (Command::SaveAndQuit(range, filename.map(|s| s.into())))
 ));
 
+named!(default_filename<&str, Command>,
+        alt_complete!(
+              separated_pair!(
+                  tag!("f"), call!(nom::multispace), call!(nom::rest_s)) => {|r: (&str, &str)|
+                      Command::SetDefaultFilename(r.1.into())
+                  }
+            | tag!("f") => {|_| Command::GetDefaultFilename}
+        )
+);
+
+named!(edit_file<&str, Command>,
+        alt_complete!(
+              separated_pair!(
+                  tag!("e"), call!(nom::multispace), call!(nom::rest_s)) => {|r: (&str, &str)|
+                      Command::EditFile(Some(r.1.into()))
+                  }
+            | tag!("e") => {|_| Command::EditFile(None)}
+        )
+);
+
 named!(pub parse_line< &str, Command >,
         alt!(
               print_lines
@@ -173,6 +201,8 @@ named!(pub parse_line< &str, Command >,
             | save_file
             | save_append
             | save_and_quit
+            | default_filename
+            | edit_file
         )
 );
 

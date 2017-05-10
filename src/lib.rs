@@ -7,11 +7,16 @@ use std::io::{self, Write};
 use std::default::Default;
 
 use errors::*;
+use commands::CommandResult;
 
-mod errors;
-mod parse; 
-mod cli;
-mod commands;
+const DEFAULT_PROMPT: &'static str = "*";
+
+macro_rules! eprintln {
+    ($($tt:tt)*) => {{
+        use std::io::Write;
+        let _ = writeln!(&mut ::std::io::stderr(), $($tt)*);
+    }}
+}
 
 pub struct Config {
     pub prompt: String,
@@ -19,16 +24,18 @@ pub struct Config {
     pub show_prompt: bool,
     pub current_index: usize,
     pub default_filename: Option<String>,
+    pub cut_buffer: Vec<String>,
 }
 
 impl Default for Config {
     fn default() -> Config {
         Config {
-            prompt: "* ".into(),
+            prompt: DEFAULT_PROMPT.into(),
             dirty: false,
             show_prompt: false,
             current_index: 0,
             default_filename: None,
+            cut_buffer: vec![],
         }
     }
 }
@@ -55,11 +62,22 @@ pub fn run(config: &mut Config) -> Result<()> {
         let inp = parse::parse_line(inp.trim());
         let inp = match inp {
             nom::IResult::Done(_, o) => o,
-            _ => continue,
+            x => {
+                eprintln!("Not done, got {:?}", x);
+                continue;
+            },
         };
-        println!("Command: {:?}", &inp);
-        if let Err(n) = inp.run(&mut buffer, config) {
-            ::std::process::exit(n as i32);
+        eprintln!("Command: {:?}, current index: {}", &inp, config.current_index);
+        match inp.run(&mut buffer, config) {
+            CommandResult::Unknown => println!("?"),
+            CommandResult::Err(n) => ::std::process::exit(n as i32),
+            _ => (),
         };
     }
 }
+
+mod errors;
+mod parse; 
+mod cli;
+mod commands;
+
