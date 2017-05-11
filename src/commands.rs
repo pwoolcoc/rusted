@@ -146,73 +146,6 @@ fn quit(cfg: &mut Config) -> Result<()> {
 impl Command {
     pub fn run(self, buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
         match self {
-            Command::ToggleShowPrompt => {
-                cfg.show_prompt = !cfg.show_prompt;
-                Ok(())
-            },
-            Command::SetDefaultFilename(filename) => {
-                cfg.default_filename = Some(filename.trim().into());
-                Ok(())
-            },
-            Command::GetDefaultFilename => {
-                match cfg.default_filename {
-                    Some(ref f) => {
-                        println!("{}", f);
-                        return Ok(());
-                    },
-                    None => return Err(unknown()),
-                }
-            },
-            Command::Print(range) => {
-                if buffer.len() == 0 {
-                    return Err(unknown());
-                }
-
-                let range = range.unwrap_or(LineRange::current_line())
-                                 .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
-                let _ = writeln!(&mut io::stdout(), "{}",
-                                buffer[start..end].join("\n"));
-                let _ = io::stdout().flush();
-                Ok(())
-            },
-            Command::InsertText(line) => {
-                let text = input_mode();
-                let line = if buffer.is_empty() {
-                    0
-                } else {
-                    line.unwrap_or(LineAddr::Period).resolve(buffer, cfg)?
-                };
-                let _ = insert_all(buffer, line, &text);
-                cfg.current_index += text.len() - 1;
-                cfg.dirty = true;
-                Ok(())
-            },
-            Command::MarkLine(line, mark) => {
-                let line = line.unwrap_or(LineAddr::Period)
-                               .resolve(buffer, cfg)?;
-                println!("Putting mark {} at line {}", mark, line);
-                cfg.marks.insert(mark, line);
-                Ok(())
-            },
-            Command::PrintNumbered(range) => {
-                if buffer.len() == 0 {
-                    return Err(unknown());
-                }
-
-                let range = range.unwrap_or(LineRange::current_line())
-                                 .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
-                let buf = buffer.iter().enumerate().map(|(ref idx, ref line)| {
-                    format!("{}\t{}", idx + 1, line)
-                }).collect::<Vec<_>>();
-                let _ = writeln!(&mut io::stdout(), "{}",
-                                buf[start..end].join("\n"));
-                let _ = io::stdout().flush();
-                Ok(())
-            },
             Command::AppendText(line) => {
                 let text = input_mode();
                 let position = line.unwrap_or(LineAddr::Period)
@@ -238,31 +171,6 @@ impl Command {
                 cfg.current_index = start;
                 cfg.dirty = true;
                 Ok(())
-            },
-            Command::SaveFile(range, filename) => {
-                let range = range.unwrap_or(LineRange::everything())
-                                 .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
-                let mut oo = OpenOptions::new();
-                save_file(start, end, oo.truncate(true).write(true), filename, buffer, cfg)
-            },
-            Command::SaveAndQuit(range, filename) => {
-                let range = range.unwrap_or(LineRange::everything())
-                                 .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
-                let mut oo = OpenOptions::new();
-                save_file(start, end, oo.write(true), filename, buffer, cfg)?;
-                quit(cfg)
-            },
-            Command::SaveAppend(range, filename) => {
-                let range = range.unwrap_or(LineRange::everything())
-                                 .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
-                let mut oo = OpenOptions::new();
-                save_file(start, end, oo.append(true), filename, buffer, cfg)
             },
             Command::EditFile(filename) => {
                 let filename = match filename {
@@ -323,9 +231,101 @@ impl Command {
 
                 Ok(())
             },
+            Command::SetDefaultFilename(filename) => {
+                cfg.default_filename = Some(filename.trim().into());
+                Ok(())
+            },
+            Command::GetDefaultFilename => {
+                match cfg.default_filename {
+                    Some(ref f) => {
+                        println!("{}", f);
+                        return Ok(());
+                    },
+                    None => return Err(unknown()),
+                }
+            },
+            Command::InsertText(line) => {
+                let text = input_mode();
+                let line = if buffer.is_empty() {
+                    0
+                } else {
+                    line.unwrap_or(LineAddr::Period).resolve(buffer, cfg)?
+                };
+                let _ = insert_all(buffer, line, &text);
+                cfg.current_index += text.len() - 1;
+                cfg.dirty = true;
+                Ok(())
+            },
+            Command::MarkLine(line, mark) => {
+                let line = line.unwrap_or(LineAddr::Period)
+                               .resolve(buffer, cfg)?;
+                println!("Putting mark {} at line {}", mark, line);
+                cfg.marks.insert(mark, line);
+                Ok(())
+            },
+            Command::Print(range) => {
+                if buffer.len() == 0 {
+                    return Err(unknown());
+                }
+
+                let range = range.unwrap_or(LineRange::current_line())
+                                 .resolve(buffer, cfg)?;
+                let start = range.0;
+                let end = range.1 + 1;
+                let _ = writeln!(&mut io::stdout(), "{}",
+                                buffer[start..end].join("\n"));
+                let _ = io::stdout().flush();
+                Ok(())
+            },
+            Command::PrintNumbered(range) => {
+                if buffer.len() == 0 {
+                    return Err(unknown());
+                }
+
+                let range = range.unwrap_or(LineRange::current_line())
+                                 .resolve(buffer, cfg)?;
+                let start = range.0;
+                let end = range.1 + 1;
+                let buf = buffer.iter().enumerate().map(|(ref idx, ref line)| {
+                    format!("{}\t{}", idx + 1, line)
+                }).collect::<Vec<_>>();
+                let _ = writeln!(&mut io::stdout(), "{}",
+                                buf[start..end].join("\n"));
+                let _ = io::stdout().flush();
+                Ok(())
+            },
+            Command::ToggleShowPrompt => {
+                cfg.show_prompt = !cfg.show_prompt;
+                Ok(())
+            },
             Command::HardQuit => Err(exit()),
             Command::Quit => {
                 quit(cfg)
+            },
+            Command::SaveFile(range, filename) => {
+                let range = range.unwrap_or(LineRange::everything())
+                                 .resolve(buffer, cfg)?;
+                let start = range.0;
+                let end = range.1 + 1;
+                let mut oo = OpenOptions::new();
+                save_file(start, end, oo.truncate(true).write(true), filename, buffer, cfg)
+            },
+            Command::SaveAndQuit(range, filename) => {
+                let range = range.unwrap_or(LineRange::everything())
+                                 .resolve(buffer, cfg)?;
+                let start = range.0;
+                let end = range.1 + 1;
+                let mut oo = OpenOptions::new();
+                save_file(start, end, oo.write(true), filename, buffer, cfg)?;
+                quit(cfg)
+            },
+            Command::SaveAppend(range, filename) => {
+                let range = range.unwrap_or(LineRange::everything())
+                                 .resolve(buffer, cfg)?;
+                let start = range.0;
+                let end = range.1 + 1;
+                let mut oo = OpenOptions::new();
+                save_file(start, end, oo.append(true), filename, buffer, cfg)
             },
             _ => Ok(()),
         }
