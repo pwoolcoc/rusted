@@ -13,13 +13,13 @@ pub enum Command {
     ChangeText(Option<LineRange>),
     Delete(Option<LineRange>),
     EditFile(Option<String>),
-    UncondEditFile(Option<String>),                     // TODO
+    UncondEditFile(Option<String>),
     SetDefaultFilename(String),
     GetDefaultFilename,
     Global(Option<LineRange>, String, String),          // TODO
     InteractiveGlobal(Option<LineRange>, String),       // TODO
     LastError,
-    ToggleErrorExpl,                                    // TODO
+    ToggleErrorExpl,
     InsertText(Option<LineAddr>),
     JoinLines(Option<LineRange>),                       // TODO
     MarkLine(Option<LineAddr>, char),
@@ -143,6 +143,51 @@ fn quit(cfg: &mut Config) -> Result<()> {
     }
 }
 
+fn edit_file(filename: &str, buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
+    let path = Path::new(filename);
+    if !path.exists() {
+        return Err(unknown());
+    }
+    let fil = match File::open(&path) {
+        Ok(f) => f,
+        Err(_) => {
+            return Err("error opening file".into());
+        }
+    };
+    let reader = BufReader::new(fil);
+    let lines = reader.lines();
+    let size_hint = match lines.size_hint() {
+        (_, Some(upper)) => upper,
+        (lower, _) => lower,
+    };
+    let mut next_buffer = Vec::with_capacity(size_hint);
+    for (idx, line) in lines.enumerate() {
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => {
+                return Err("error reading from file".into());
+            },
+        };
+        next_buffer.insert(idx, line);
+    }
+
+    if next_buffer.len() > buffer.len() {
+        // reserve some more capacity for the buffer
+        let extra = next_buffer.len() - buffer.len();
+        buffer.reserve(extra);
+    }
+
+    buffer.clear();
+
+    for (idx, elem) in next_buffer.into_iter().enumerate() {
+        buffer.insert(idx, elem);
+    }
+
+    cfg.current_index = buffer.len() - 1;
+
+    Ok(())
+}
+
 impl Command {
     pub fn run(self, buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
         match self {
@@ -173,8 +218,10 @@ impl Command {
                 let range = range.unwrap_or(LineRange::current_line())
                                     .resolve(buffer, cfg)?;
                 let (start, end) = (range.0, range.1 + 1);
-                for _ in start..end {
-                    buffer.remove(start);
+                if !buffer.is_empty() {
+                    for _ in start..end {
+                        buffer.remove(start);
+                    }
                 }
                 insert_all(buffer, start, &text)?;
                 cfg.current_index += num_lines - 1;
@@ -208,48 +255,22 @@ impl Command {
                 if cfg.dirty && !confirm("unsaved changes. really edit?") {
                     return Ok(());
                 }
-                let path = Path::new(&filename);
-                if !path.exists() {
-                    return Err(unknown());
-                }
-                let fil = match File::open(&path) {
-                    Ok(f) => f,
-                    Err(_) => {
-                        return Err("error opening file".into());
+                edit_file(&filename, buffer, cfg)
+            },
+            Command::UncondEditFile(filename) => {
+                let filename = match filename {
+                    Some(filename) => {
+                        filename
+                    },
+                    None => {
+                        if cfg.default_filename.is_none() {
+                            return Err(unknown());
+                        } else {
+                            cfg.default_filename.clone().unwrap()
+                        }
                     }
                 };
-                let reader = BufReader::new(fil);
-                let lines = reader.lines();
-                let size_hint = match lines.size_hint() {
-                    (_, Some(upper)) => upper,
-                    (lower, _) => lower,
-                };
-                let mut next_buffer = Vec::with_capacity(size_hint);
-                for (idx, line) in lines.enumerate() {
-                    let line = match line {
-                        Ok(l) => l,
-                        Err(_) => {
-                            return Err("error reading from file".into());
-                        },
-                    };
-                    next_buffer.insert(idx, line);
-                }
-
-                if next_buffer.len() > buffer.len() {
-                    // reserve some more capacity for the buffer
-                    let extra = next_buffer.len() - buffer.len();
-                    buffer.reserve(extra);
-                }
-
-                buffer.clear();
-
-                for (idx, elem) in next_buffer.into_iter().enumerate() {
-                    buffer.insert(idx, elem);
-                }
-
-                cfg.current_index = buffer.len() - 1;
-
-                Ok(())
+                edit_file(&filename, buffer, cfg)
             },
             Command::SetDefaultFilename(filename) => {
                 cfg.default_filename = Some(filename.trim().into());
@@ -268,6 +289,10 @@ impl Command {
                 if let Some(ref e) = cfg.last_error {
                     println!("{}", e);
                 }
+                Ok(())
+            },
+            Command::ToggleErrorExpl => {
+                cfg.print_errors = !cfg.print_errors;
                 Ok(())
             },
             Command::InsertText(line) => {

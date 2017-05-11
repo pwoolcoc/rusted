@@ -211,6 +211,17 @@ named!(edit_file<&str, Command>,
         )
 );
 
+named!(uncond_edit_file<&str, Command>,
+        alt_complete!(
+              separated_pair!(
+                  tag!("E"), call!(nom::multispace), call!(nom::rest_s)) => {|r: (&str, &str)|
+                      Command::UncondEditFile(Some(r.1.into()))
+                  }
+            | tag!("E") => {|_| Command::UncondEditFile(None)}
+        )
+);
+        
+
 named!(mark_line<&str, Command>,
         do_parse!(
             addr: opt!(line_addr) >>
@@ -239,6 +250,12 @@ named!(last_error<&str, Command>,
             (Command::LastError)
 ));
 
+named!(toggle_error_expl<&str, Command>,
+        do_parse!(
+            tag!("H") >>
+            (Command::ToggleErrorExpl)
+));
+
 named!(pub parse_line< &str, Command >,
         alt!(
               print_lines
@@ -253,10 +270,12 @@ named!(pub parse_line< &str, Command >,
             | save_and_quit
             | default_filename
             | edit_file
+            | uncond_edit_file
             | mark_line
             | insert_text
             | change_text
             | last_error
+            | toggle_error_expl
         )
 );
 

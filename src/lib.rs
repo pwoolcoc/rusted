@@ -1,7 +1,6 @@
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate nom;
 #[macro_use] extern crate log;
-extern crate env_logger;
 #[cfg(test)]
 #[macro_use] extern crate nom_test_helpers;
 
@@ -30,6 +29,7 @@ pub struct Config {
     pub cut_buffer: Vec<String>,
     pub marks: HashMap<char, usize>,
     pub last_error: Option<String>,
+    pub print_errors: bool,
 }
 
 impl Default for Config {
@@ -43,6 +43,7 @@ impl Default for Config {
             cut_buffer: vec![],
             marks: HashMap::new(),
             last_error: None,
+            print_errors: false,
         }
     }
 }
@@ -80,8 +81,12 @@ pub fn run(config: &mut Config) -> Result<()> {
                 println!("?");
             },
             Err(Error(ErrorKind::Msg(s), _)) => {
+                if config.print_errors {
+                    println!("{}", s);
+                } else {
+                    println!("?");
+                }
                 config.last_error = Some(s);
-                println!("?");
             },
             Err(_) => process::exit(1),
             _ => (),
