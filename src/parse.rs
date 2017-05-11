@@ -226,6 +226,19 @@ named!(insert_text<&str, Command>,
             (Command::InsertText(addr))
 ));
 
+named!(change_text<&str, Command>,
+        do_parse!(
+            range: opt!(range) >>
+            tag!("c") >>
+            (Command::ChangeText(range))
+));
+
+named!(last_error<&str, Command>,
+        do_parse!(
+            tag!("h") >>
+            (Command::LastError)
+));
+
 named!(pub parse_line< &str, Command >,
         alt!(
               print_lines
@@ -242,6 +255,8 @@ named!(pub parse_line< &str, Command >,
             | edit_file
             | mark_line
             | insert_text
+            | change_text
+            | last_error
         )
 );
 

@@ -10,7 +10,7 @@ use std::io::{self, Write, BufRead, BufReader};
 #[derive(Debug, PartialEq, Clone)]
 pub enum Command {
     AppendText(Option<LineAddr>),
-    ChangeText(Option<LineRange>),                      // TODO
+    ChangeText(Option<LineRange>),
     Delete(Option<LineRange>),
     EditFile(Option<String>),
     UncondEditFile(Option<String>),                     // TODO
@@ -18,7 +18,7 @@ pub enum Command {
     GetDefaultFilename,
     Global(Option<LineRange>, String, String),          // TODO
     InteractiveGlobal(Option<LineRange>, String),       // TODO
-    LastError,                                          // TODO
+    LastError,
     ToggleErrorExpl,                                    // TODO
     InsertText(Option<LineAddr>),
     JoinLines(Option<LineRange>),                       // TODO
@@ -156,15 +156,35 @@ impl Command {
                     position + 1
                 };
                 let _ = insert_all(buffer, position, &text);
-                cfg.current_index += text.len() - 1;
+                let num_lines = text.len();
+                if num_lines == 0 {
+                    return Err(unknown());
+                }
+                cfg.current_index += num_lines - 1;
+                cfg.dirty = true;
+                Ok(())
+            },
+            Command::ChangeText(range) => {
+                let text = input_mode();
+                let num_lines = text.len();
+                if num_lines == 0 {
+                    return Err(unknown());
+                }
+                let range = range.unwrap_or(LineRange::current_line())
+                                    .resolve(buffer, cfg)?;
+                let (start, end) = (range.0, range.1 + 1);
+                for _ in start..end {
+                    buffer.remove(start);
+                }
+                insert_all(buffer, start, &text)?;
+                cfg.current_index += num_lines - 1;
                 cfg.dirty = true;
                 Ok(())
             },
             Command::Delete(range) => {
                 let range = range.unwrap_or(LineRange::current_line())
                                  .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
+                let (start, end) = (range.0, range.1 + 1);
                 for _ in start..end {
                     buffer.remove(start);
                 }
@@ -238,11 +258,17 @@ impl Command {
             Command::GetDefaultFilename => {
                 match cfg.default_filename {
                     Some(ref f) => {
-                        println!("{}", f);
+                        debug!("default filename: {}", f);
                         return Ok(());
                     },
                     None => return Err(unknown()),
                 }
+            },
+            Command::LastError => {
+                if let Some(ref e) = cfg.last_error {
+                    println!("{}", e);
+                }
+                Ok(())
             },
             Command::InsertText(line) => {
                 let text = input_mode();
@@ -259,7 +285,7 @@ impl Command {
             Command::MarkLine(line, mark) => {
                 let line = line.unwrap_or(LineAddr::Period)
                                .resolve(buffer, cfg)?;
-                println!("Putting mark {} at line {}", mark, line);
+                debug!("Putting mark {} at line {}", mark, line);
                 cfg.marks.insert(mark, line);
                 Ok(())
             },
@@ -270,8 +296,7 @@ impl Command {
 
                 let range = range.unwrap_or(LineRange::current_line())
                                  .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
+                let (start, end) = (range.0, range.1 + 1);
                 let _ = writeln!(&mut io::stdout(), "{}",
                                 buffer[start..end].join("\n"));
                 let _ = io::stdout().flush();
@@ -284,8 +309,7 @@ impl Command {
 
                 let range = range.unwrap_or(LineRange::current_line())
                                  .resolve(buffer, cfg)?;
-                let start = range.0;
-                let end = range.1 + 1;
+                let (start, end) = (range.0, range.1 + 1);
                 let buf = buffer.iter().enumerate().map(|(ref idx, ref line)| {
                     format!("{}\t{}", idx + 1, line)
                 }).collect::<Vec<_>>();

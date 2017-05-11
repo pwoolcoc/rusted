@@ -1,11 +1,14 @@
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate nom;
+#[macro_use] extern crate log;
+extern crate env_logger;
 #[cfg(test)]
 #[macro_use] extern crate nom_test_helpers;
 
 use std::io::{self, Write};
 use std::default::Default;
 use std::collections::HashMap;
+use std::process;
 
 use errors::*;
 
@@ -26,6 +29,7 @@ pub struct Config {
     pub default_filename: Option<String>,
     pub cut_buffer: Vec<String>,
     pub marks: HashMap<char, usize>,
+    pub last_error: Option<String>,
 }
 
 impl Default for Config {
@@ -38,6 +42,7 @@ impl Default for Config {
             default_filename: None,
             cut_buffer: vec![],
             marks: HashMap::new(),
+            last_error: None,
         }
     }
 }
@@ -65,14 +70,20 @@ pub fn run(config: &mut Config) -> Result<()> {
         let inp = match inp {
             nom::IResult::Done(_, o) => o,
             x => {
-                eprintln!("Not done, got {:?}", x);
+                debug!("Not done, got {:?}", x);
                 continue;
             },
         };
-        eprintln!("Command: {:?}, current index: {}", &inp, config.current_index);
+        debug!("Command: {:?}, current index: {}", &inp, config.current_index);
         match inp.run(&mut buffer, config) {
-            Err(Error(ErrorKind::Unknown, _)) => println!("?"),
-            Err(_) => ::std::process::exit(1),
+            Err(Error(ErrorKind::Unknown, _)) => {
+                println!("?");
+            },
+            Err(Error(ErrorKind::Msg(s), _)) => {
+                config.last_error = Some(s);
+                println!("?");
+            },
+            Err(_) => process::exit(1),
             _ => (),
         };
     }

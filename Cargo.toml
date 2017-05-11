@@ -3,17 +3,18 @@ authors = ["Paul Woolcock <paul@woolcock.us>"]
 name = "rusted"
 version = "0.1.0"
 
+[[bin]]
+name = "rusted"
+path = "src/bin/main.rs"
+
 [dependencies]
 clap = "2.24.1"
+env_logger = "0.4.2"
 error-chain = "0.10.0"
+log = "0.3.7"
 nom = "2"
 nom-test-helpers = "2.0.0"
-
 
 [lib]
 name = "_rusted"
 path = "src/lib.rs"
-
-[[bin]]
-name = "rusted"
-path = "src/bin/main.rs"
