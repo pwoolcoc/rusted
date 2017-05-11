@@ -1,5 +1,6 @@
 use parse::{LineRange, LineAddr};
 use {Buffer, Config, insert_all};
+use errors::*;
 
 use std::path::Path;
 use std::fs::{File, OpenOptions};
@@ -21,7 +22,7 @@ pub enum Command {
     ToggleErrorExpl,                                    // TODO
     InsertText(Option<LineAddr>),                       // TODO
     JoinLines(Option<LineRange>),                       // TODO
-    MarkLine(Option<LineAddr>, String),                 // TODO
+    MarkLine(Option<LineAddr>, char),
     List(Option<LineRange>),                            // TODO
     MoveLines(Option<LineRange>, Option<LineAddr>),     // TODO
     PrintNumbered(Option<LineRange>),
@@ -49,10 +50,12 @@ pub enum Command {
     NullCmd(Option<LineAddr>),                          // TODO
 }
 
-pub enum CommandResult {
-    Success,
-    Err(u8),
-    Unknown,
+fn unknown() -> Error {
+    ErrorKind::Unknown.into()
+}
+
+fn exit() -> Error {
+    ErrorKind::Exit.into()
 }
 
 pub fn input_mode() -> Vec<String> {
@@ -91,34 +94,33 @@ fn get_filename(filename: Option<String>, cfg: &mut Config) -> Option<String> {
 fn save_file(start: usize, end: usize,
                 open_options: &mut OpenOptions,
                 filename: Option<String>, buffer: &mut Buffer,
-                cfg: &mut Config) -> CommandResult
+                cfg: &mut Config) -> Result<()>
 {
     let filename = match get_filename(filename, cfg) {
         Some(f) => f,
-        None => return CommandResult::Err(1),
+        None => return Err("No filename".into()),
     };
 
     if filename.trim().starts_with("!") {
         // system command
-        return CommandResult::Unknown;
+        return Err(unknown());
     }
 
     let path = Path::new(&filename);
     if !path.exists() {
-        return CommandResult::Unknown;
+        return Err(unknown());
     }
     let mut fp = match open_options.open(&path) {
         Ok(f) => f,
         Err(_) => {
-            eprintln!("Could not open file");
-            return CommandResult::Err(255);
+            return Err("Could not open file".into());
         }
     };
     for idx in start..end {
         let _ = writeln!(fp, "{}", buffer[idx]);
     }
     cfg.dirty = false;
-    CommandResult::Success
+    Ok(())
 }
 
 fn confirm(msg: &str) -> bool {
@@ -129,59 +131,66 @@ fn confirm(msg: &str) -> bool {
     &inp.trim()[..] == "y"
 }
 
-fn quit(cfg: &mut Config) -> CommandResult {
+fn quit(cfg: &mut Config) -> Result<()> {
     if cfg.dirty {
         if confirm("unsaved changes. really exit?") {
-            CommandResult::Err(0)
+            Err(exit())
         } else {
-            CommandResult::Success
+            Ok(())
         }
     } else {
-        CommandResult::Err(0)
+        Err(exit())
     }
 }
 
 impl Command {
-    pub fn run(self, buffer: &mut Buffer, cfg: &mut Config) -> CommandResult {
+    pub fn run(self, buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
         match self {
             Command::ToggleShowPrompt => {
                 cfg.show_prompt = !cfg.show_prompt;
-                CommandResult::Success
+                Ok(())
             },
             Command::SetDefaultFilename(filename) => {
                 cfg.default_filename = Some(filename.trim().into());
-                CommandResult::Success
+                Ok(())
             },
             Command::GetDefaultFilename => {
                 match cfg.default_filename {
                     Some(ref f) => {
                         println!("{}", f);
-                        return CommandResult::Success;
+                        return Ok(());
                     },
-                    None => return CommandResult::Unknown,
+                    None => return Err(unknown()),
                 }
             },
             Command::Print(range) => {
                 if buffer.len() == 0 {
-                    return CommandResult::Unknown;
+                    return Err(unknown());
                 }
 
                 let range = range.unwrap_or(LineRange::current_line())
-                                 .resolve(buffer, cfg);
+                                 .resolve(buffer, cfg)?;
                 let start = range.0;
                 let end = range.1 + 1;
                 let _ = writeln!(&mut io::stdout(), "{}",
                                 buffer[start..end].join("\n"));
                 let _ = io::stdout().flush();
-                CommandResult::Success
+                Ok(())
+            },
+            Command::MarkLine(line, mark) => {
+                let line = line.unwrap_or(LineAddr::Period)
+                               .resolve(buffer, cfg)?;
+                println!("Putting mark {} at line {}", mark, line);
+                cfg.marks.insert(mark, line);
+                Ok(())
             },
             Command::PrintNumbered(range) => {
                 if buffer.len() == 0 {
-                    return CommandResult::Unknown;
+                    return Err(unknown());
                 }
 
                 let range = range.unwrap_or(LineRange::current_line())
-                                 .resolve(buffer, cfg);
+                                 .resolve(buffer, cfg)?;
                 let start = range.0;
                 let end = range.1 + 1;
                 let buf = buffer.iter().enumerate().map(|(ref idx, ref line)| {
@@ -190,12 +199,12 @@ impl Command {
                 let _ = writeln!(&mut io::stdout(), "{}",
                                 buf[start..end].join("\n"));
                 let _ = io::stdout().flush();
-                CommandResult::Success
+                Ok(())
             },
             Command::AppendText(line) => {
                 let text = input_mode();
                 let position = line.unwrap_or(LineAddr::Period)
-                                   .resolve(buffer, cfg);
+                                   .resolve(buffer, cfg)?;
                 let position = if buffer.is_empty() {
                     0
                 } else {
@@ -204,11 +213,11 @@ impl Command {
                 let _ = insert_all(buffer, position, &text);
                 cfg.current_index += text.len() - 1;
                 cfg.dirty = true;
-                CommandResult::Success
+                Ok(())
             },
             Command::Delete(range) => {
                 let range = range.unwrap_or(LineRange::current_line())
-                                 .resolve(buffer, cfg);
+                                 .resolve(buffer, cfg)?;
                 let start = range.0;
                 let end = range.1 + 1;
                 for _ in start..end {
@@ -216,11 +225,11 @@ impl Command {
                 }
                 cfg.current_index = start;
                 cfg.dirty = true;
-                CommandResult::Success
+                Ok(())
             },
             Command::SaveFile(range, filename) => {
                 let range = range.unwrap_or(LineRange::everything())
-                                 .resolve(buffer, cfg);
+                                 .resolve(buffer, cfg)?;
                 let start = range.0;
                 let end = range.1 + 1;
                 let mut oo = OpenOptions::new();
@@ -228,21 +237,16 @@ impl Command {
             },
             Command::SaveAndQuit(range, filename) => {
                 let range = range.unwrap_or(LineRange::everything())
-                                 .resolve(buffer, cfg);
+                                 .resolve(buffer, cfg)?;
                 let start = range.0;
                 let end = range.1 + 1;
                 let mut oo = OpenOptions::new();
-                if let CommandResult::Err(e) = save_file(start, end,
-                                                         oo.write(true),
-                                                         filename, buffer,
-                                                         cfg) {
-                    return CommandResult::Err(e);
-                }
+                save_file(start, end, oo.write(true), filename, buffer, cfg)?;
                 quit(cfg)
             },
             Command::SaveAppend(range, filename) => {
                 let range = range.unwrap_or(LineRange::everything())
-                                 .resolve(buffer, cfg);
+                                 .resolve(buffer, cfg)?;
                 let start = range.0;
                 let end = range.1 + 1;
                 let mut oo = OpenOptions::new();
@@ -255,24 +259,23 @@ impl Command {
                     },
                     None => {
                         if cfg.default_filename.is_none() {
-                            return CommandResult::Unknown;
+                            return Err(unknown());
                         } else {
                             cfg.default_filename.clone().unwrap()
                         }
                     }
                 };
                 if cfg.dirty && !confirm("unsaved changes. really edit?") {
-                    return CommandResult::Success;
+                    return Ok(());
                 }
                 let path = Path::new(&filename);
                 if !path.exists() {
-                    return CommandResult::Unknown;
+                    return Err(unknown());
                 }
                 let fil = match File::open(&path) {
                     Ok(f) => f,
                     Err(_) => {
-                        eprintln!("error opening file");
-                        return CommandResult::Err(255);
+                        return Err("error opening file".into());
                     }
                 };
                 let reader = BufReader::new(fil);
@@ -286,8 +289,7 @@ impl Command {
                     let line = match line {
                         Ok(l) => l,
                         Err(_) => {
-                            eprintln!("error reading from file");
-                            return CommandResult::Err(255);
+                            return Err("error reading from file".into());
                         },
                     };
                     next_buffer.insert(idx, line);
@@ -307,13 +309,13 @@ impl Command {
 
                 cfg.current_index = buffer.len() - 1;
 
-                CommandResult::Success
+                Ok(())
             },
-            Command::HardQuit => CommandResult::Err(0),
+            Command::HardQuit => Err(exit()),
             Command::Quit => {
                 quit(cfg)
             },
-            _ => CommandResult::Success,
+            _ => Ok(()),
         }
     }
 }

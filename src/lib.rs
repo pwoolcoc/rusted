@@ -5,9 +5,9 @@
 
 use std::io::{self, Write};
 use std::default::Default;
+use std::collections::HashMap;
 
 use errors::*;
-use commands::CommandResult;
 
 const DEFAULT_PROMPT: &'static str = "*";
 
@@ -25,6 +25,7 @@ pub struct Config {
     pub current_index: usize,
     pub default_filename: Option<String>,
     pub cut_buffer: Vec<String>,
+    pub marks: HashMap<char, usize>,
 }
 
 impl Default for Config {
@@ -36,6 +37,7 @@ impl Default for Config {
             current_index: 0,
             default_filename: None,
             cut_buffer: vec![],
+            marks: HashMap::new(),
         }
     }
 }
@@ -69,8 +71,8 @@ pub fn run(config: &mut Config) -> Result<()> {
         };
         eprintln!("Command: {:?}, current index: {}", &inp, config.current_index);
         match inp.run(&mut buffer, config) {
-            CommandResult::Unknown => println!("?"),
-            CommandResult::Err(n) => ::std::process::exit(n as i32),
+            Err(Error(ErrorKind::Unknown, _)) => println!("?"),
+            Err(_) => ::std::process::exit(1),
             _ => (),
         };
     }

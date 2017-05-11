@@ -1,7 +1,16 @@
 use nom;
 use std::str;
+
+use errors::*;
 use {Buffer, Config};
 use commands::Command;
+
+fn lowercase() -> String {
+    (97u8..123).map(|b| b as char)
+               .map(|c| c.to_string())
+               .collect::<Vec<_>>()
+               .join("")
+}
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct LineRange(Option<LineAddr>, Mode, Option<LineAddr>);
@@ -15,9 +24,9 @@ impl LineRange {
         LineRange(Some(LineAddr::Period), Mode::Comma, Some(LineAddr::Period))
     }
 
-    pub fn resolve(self, buffer: &Buffer, config: &Config) -> (usize, usize) {
-        (self.0.unwrap_or(LineAddr::Number(1)).resolve(buffer, config),
-         self.2.unwrap_or(LineAddr::DollarSign).resolve(buffer, config))
+    pub fn resolve(self, buffer: &Buffer, config: &Config) -> Result<(usize, usize)> {
+        Ok((self.0.unwrap_or(LineAddr::Number(1)).resolve(buffer, config)?,
+            self.2.unwrap_or(LineAddr::DollarSign).resolve(buffer, config)?))
     }
 }
 
@@ -26,11 +35,12 @@ pub enum LineAddr {
     Number(u64),
     DollarSign,
     Period,
+    Mark(char),
 }
 
 impl LineAddr {
-    pub fn resolve(self, buffer: &Buffer, config: &Config) -> usize {
-        match self {
+    pub fn resolve(self, buffer: &Buffer, config: &Config) -> Result<usize> {
+        Ok(match self {
             LineAddr::Number(n) => (n - 1) as usize,
             LineAddr::DollarSign => {
                 if buffer.len() > 1 {
@@ -40,7 +50,11 @@ impl LineAddr {
                 }
             },
             LineAddr::Period => config.current_index as usize,
-        }
+            LineAddr::Mark(s) => match config.marks.get(&s) {
+                Some(u) => *u,
+                None => return Err("Mark not found".into()), 
+            },
+        })
     }
 }
 
@@ -76,10 +90,18 @@ named!(period<&str, LineAddr>,
             tag!(".") >>
             (LineAddr::Period)));
 
+named!(mark<&str, LineAddr>,
+        do_parse!(
+            tag!("'") >>
+            mark: one_of!(&lowercase()) >>
+            (LineAddr::Mark(mark))
+));
+
 named!(line_addr<&str, LineAddr>, alt!(
               period
             | dollar_sign
             | number
+            | mark
 ));
 
 named!(range< &str, LineRange >, do_parse!(
@@ -189,6 +211,14 @@ named!(edit_file<&str, Command>,
         )
 );
 
+named!(mark_line<&str, Command>,
+        do_parse!(
+            addr: opt!(line_addr) >>
+            tag!("k") >>
+            mark: one_of!(&lowercase()) >>
+            (Command::MarkLine(addr, mark))
+));
+
 named!(pub parse_line< &str, Command >,
         alt!(
               print_lines
@@ -203,6 +233,7 @@ named!(pub parse_line< &str, Command >,
             | save_and_quit
             | default_filename
             | edit_file
+            | mark_line
         )
 );
 
