@@ -219,6 +219,13 @@ named!(mark_line<&str, Command>,
             (Command::MarkLine(addr, mark))
 ));
 
+named!(insert_text<&str, Command>,
+        do_parse!(
+            addr: opt!(line_addr) >>
+            tag!("i") >>
+            (Command::InsertText(addr))
+));
+
 named!(pub parse_line< &str, Command >,
         alt!(
               print_lines
@@ -234,6 +241,7 @@ named!(pub parse_line< &str, Command >,
             | default_filename
             | edit_file
             | mark_line
+            | insert_text
         )
 );
 

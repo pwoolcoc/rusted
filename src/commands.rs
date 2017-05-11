@@ -20,7 +20,7 @@ pub enum Command {
     InteractiveGlobal(Option<LineRange>, String),       // TODO
     LastError,                                          // TODO
     ToggleErrorExpl,                                    // TODO
-    InsertText(Option<LineAddr>),                       // TODO
+    InsertText(Option<LineAddr>),
     JoinLines(Option<LineRange>),                       // TODO
     MarkLine(Option<LineAddr>, char),
     List(Option<LineRange>),                            // TODO
@@ -175,6 +175,18 @@ impl Command {
                 let _ = writeln!(&mut io::stdout(), "{}",
                                 buffer[start..end].join("\n"));
                 let _ = io::stdout().flush();
+                Ok(())
+            },
+            Command::InsertText(line) => {
+                let text = input_mode();
+                let line = if buffer.is_empty() {
+                    0
+                } else {
+                    line.unwrap_or(LineAddr::Period).resolve(buffer, cfg)?
+                };
+                let _ = insert_all(buffer, line, &text);
+                cfg.current_index += text.len() - 1;
+                cfg.dirty = true;
                 Ok(())
             },
             Command::MarkLine(line, mark) => {
