@@ -1,4 +1,4 @@
-use parse::{LineRange, LineAddr};
+use parse::{LineRange, Addr};
 use {Buffer, Config, insert_all};
 use errors::*;
 
@@ -6,10 +6,12 @@ use std::path::Path;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write, BufRead, BufReader};
 
+mod append_text;
+
 #[allow(dead_code)] // take this out when all the "TODO"s are gone
 #[derive(Debug, PartialEq, Clone)]
 pub enum Command {
-    AppendText(Option<LineAddr>),
+    AppendText(Option<Addr>),
     ChangeText(Option<LineRange>),
     Delete(Option<LineRange>),
     EditFile(Option<String>),
@@ -20,20 +22,20 @@ pub enum Command {
     InteractiveGlobal(Option<LineRange>, String),       // TODO
     LastError,
     ToggleErrorExpl,
-    InsertText(Option<LineAddr>),
+    InsertText(Option<Addr>),
     JoinLines(Option<LineRange>),                       // TODO
-    MarkLine(Option<LineAddr>, char),
+    MarkLine(Option<Addr>, char),
     List(Option<LineRange>),                            // TODO
-    MoveLines(Option<LineRange>, Option<LineAddr>),     // TODO
+    MoveLines(Option<LineRange>, Option<Addr>),     // TODO
     PrintNumbered(Option<LineRange>),
     Print(Option<LineRange>),
     ToggleShowPrompt,
     Quit,
     HardQuit,
-    ReadFile(Option<LineAddr>, String),                 // TODO
+    ReadFile(Option<Addr>, String),                 // TODO
     Substitute(Option<LineRange>, String, String),      // TODO
     RepeatSubst(Option<LineRange>),                     // TODO
-    Transfer(Option<LineRange>, Option<LineAddr>),      // TODO
+    Transfer(Option<LineRange>, Option<Addr>),      // TODO
     Undo,                                               // TODO
     NotGlobal(Option<LineRange>, String, String),       // TODO
     InteractiveNotGlobal(Option<LineRange>, String),    // TODO
@@ -41,13 +43,13 @@ pub enum Command {
     SaveAndQuit(Option<LineRange>, Option<String>),
     SaveAppend(Option<LineRange>, Option<String>),
 
-    InsertFromCut(Option<LineAddr>),                    // TODO
+    InsertFromCut(Option<Addr>),                    // TODO
     YankToCut(Option<LineRange>),                       // TODO
-    Scroll(Option<LineAddr>),                           // TODO
+    Scroll(Option<Addr>),                           // TODO
     ShellCmd(String),                                   // TODO
     Comment(Option<LineRange>),                         // TODO
-    PrintLineNumber(Option<LineAddr>),                  // TODO
-    NullCmd(Option<LineAddr>),                          // TODO
+    PrintLineNumber(Option<Addr>),                  // TODO
+    NullCmd(Option<Addr>),                          // TODO
 }
 
 fn unknown() -> Error {
@@ -193,21 +195,7 @@ impl Command {
         match self {
             Command::AppendText(line) => {
                 let text = input_mode();
-                let position = line.unwrap_or(LineAddr::Period)
-                                   .resolve(buffer, cfg)?;
-                let position = if buffer.is_empty() {
-                    0
-                } else {
-                    position + 1
-                };
-                let _ = insert_all(buffer, position, &text);
-                let num_lines = text.len();
-                if num_lines == 0 {
-                    return Err(unknown());
-                }
-                cfg.current_index += num_lines - 1;
-                cfg.dirty = true;
-                Ok(())
+                append_text::cmd(&text, line, buffer, cfg)
             },
             Command::ChangeText(range) => {
                 let text = input_mode();
@@ -300,7 +288,7 @@ impl Command {
                 let line = if buffer.is_empty() {
                     0
                 } else {
-                    line.unwrap_or(LineAddr::Period).resolve(buffer, cfg)?
+                    line.unwrap_or(Addr::period()).resolve(buffer, cfg)?
                 };
                 let _ = insert_all(buffer, line, &text);
                 cfg.current_index += text.len() - 1;
@@ -308,7 +296,7 @@ impl Command {
                 Ok(())
             },
             Command::MarkLine(line, mark) => {
-                let line = line.unwrap_or(LineAddr::Period)
+                let line = line.unwrap_or(Addr::period())
                                .resolve(buffer, cfg)?;
                 debug!("Putting mark {} at line {}", mark, line);
                 cfg.marks.insert(mark, line);

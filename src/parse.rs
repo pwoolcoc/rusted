@@ -13,20 +13,20 @@ fn lowercase() -> String {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub struct LineRange(Option<LineAddr>, Mode, Option<LineAddr>);
+pub struct LineRange(Option<Addr>, Mode, Option<Addr>);
 
 impl LineRange {
     pub fn everything() -> LineRange {
-        LineRange(Some(LineAddr::Number(1)), Mode::Comma, Some(LineAddr::DollarSign))
+        LineRange(Some(Addr::number(1)), Mode::Comma, Some(Addr::dollar_sign()))
     }
 
     pub fn current_line() -> LineRange {
-        LineRange(Some(LineAddr::Period), Mode::Comma, Some(LineAddr::Period))
+        LineRange(Some(Addr::period()), Mode::Comma, Some(Addr::period()))
     }
 
     pub fn resolve(self, buffer: &Buffer, config: &Config) -> Result<(usize, usize)> {
-        Ok((self.0.unwrap_or(LineAddr::Number(1)).resolve(buffer, config)?,
-            self.2.unwrap_or(LineAddr::DollarSign).resolve(buffer, config)?))
+        Ok((self.0.unwrap_or(Addr::number(1)).resolve(buffer, config)?,
+            self.2.unwrap_or(Addr::dollar_sign()).resolve(buffer, config)?))
     }
 }
 
@@ -38,10 +38,37 @@ pub enum LineAddr {
     Mark(char),
 }
 
-impl LineAddr {
+#[derive(Debug, PartialEq, Clone)]
+pub enum Modifier {
+    PrefixPlus,
+    SuffixPlus(Option<u64>),
+    PrefixMinus,
+    SuffixMinus(Option<u64>),
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub struct Addr {
+    pub primary: LineAddr,
+    modifier: Option<Modifier>,
+}
+
+impl Addr {
+    pub fn new(line_addr: LineAddr, modifier: Option<Modifier>) -> Addr {
+        Addr {
+            primary: line_addr,
+            modifier: modifier,
+        }
+    }
+
     pub fn resolve(self, buffer: &Buffer, config: &Config) -> Result<usize> {
-        Ok(match self {
-            LineAddr::Number(n) => (n - 1) as usize,
+        Ok(match self.primary {
+            LineAddr::Number(n) => {
+                if n > 0 {
+                    (n - 1) as usize
+                } else {
+                    0
+                }
+            },
             LineAddr::DollarSign => {
                 if buffer.len() > 1 {
                     buffer.len() - 1
@@ -55,6 +82,22 @@ impl LineAddr {
                 None => return Err("Mark not found".into()), 
             },
         })
+    }
+
+    pub fn number(num: u64) -> Addr {
+        Addr::new(LineAddr::Number(num), None)
+    }
+
+    pub fn dollar_sign() -> Addr {
+        Addr::new(LineAddr::DollarSign, None)
+    }
+
+    pub fn period() -> Addr {
+        Addr::new(LineAddr::Period, None)
+    }
+
+    pub fn mark(c: char) -> Addr {
+        Addr::new(LineAddr::Mark(c), None)
     }
 }
 
@@ -104,10 +147,42 @@ named!(line_addr<&str, LineAddr>, alt!(
             | mark
 ));
 
+named!(prefix_plus_minus<&str, Modifier>,
+        alt!(
+              tag!("+") => {|_| Modifier::PrefixPlus }
+            | tag!("-") => {|_| Modifier::PrefixMinus }
+        )
+);
+
+named!(addr_prefix<&str, Addr>, 
+        do_parse!(
+            prefix: opt!(prefix_plus_minus) >>
+            primary: call!(line_addr) >>
+            (Addr::new(primary, prefix))
+));
+
+/*
+named!(suffix_plus_minus<&str, Modifier>,
+        alt!(
+              tag!("+") => {|_| Modifier::SuffixPlus(None) }
+            | tag!("-") => {|_| Modifier::SuffixMinus(None) }
+        )
+);
+
+named!(addr_suffix<&str, Addr>,
+        do_parse!(
+            primary: call!(line_addr) >>
+            suffix: opt!(suffix_plus_minus) >>
+            (Addr::new(primary, suffix))
+));
+*/
+
+named!(addr<&str, Addr>, call!(addr_prefix));
+
 named!(range< &str, LineRange >, do_parse!(
-            start: opt!(line_addr) >>
+            start: opt!(addr) >>
             mode: comma_or_semicolon >>
-            end: opt!(line_addr) >>
+            end: opt!(addr) >>
             (LineRange(start, mode, end))
 ));
 
@@ -155,7 +230,7 @@ named!(delete<&str, Command>,
 
 named!(append_text<&str, Command>,
         do_parse!(
-            addr: opt!(line_addr) >>
+            addr: opt!(addr) >>
             tag!("a") >>
             (Command::AppendText(addr))
 ));
@@ -224,7 +299,7 @@ named!(uncond_edit_file<&str, Command>,
 
 named!(mark_line<&str, Command>,
         do_parse!(
-            addr: opt!(line_addr) >>
+            addr: opt!(addr) >>
             tag!("k") >>
             mark: one_of!(&lowercase()) >>
             (Command::MarkLine(addr, mark))
@@ -232,7 +307,7 @@ named!(mark_line<&str, Command>,
 
 named!(insert_text<&str, Command>,
         do_parse!(
-            addr: opt!(line_addr) >>
+            addr: opt!(addr) >>
             tag!("i") >>
             (Command::InsertText(addr))
 ));
@@ -281,11 +356,4 @@ named!(pub parse_line< &str, Command >,
 
 #[cfg(test)]
 mod tests {
-    use super::{range, LineRange, Mode};
-    #[test]
-    fn it_works() {
-        assert_finished_and_eq!(
-                range(b"23,24"),
-                LineRange(Some(23), Mode::Comma, Some(24)));
-    }
 }
