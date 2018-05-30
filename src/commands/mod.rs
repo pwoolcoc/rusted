@@ -7,6 +7,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{self, Write, BufRead, BufReader};
 
 mod append_text;
+mod change_text;
 
 #[allow(dead_code)] // take this out when all the "TODO"s are gone
 #[derive(Debug, PartialEq, Clone)]
@@ -185,7 +186,7 @@ fn edit_file(filename: &str, buffer: &mut Buffer, cfg: &mut Config) -> Result<()
         buffer.insert(idx, elem);
     }
 
-    cfg.current_index = buffer.len() - 1;
+    cfg.current_index = Some(buffer.len() - 1);
 
     Ok(())
 }
@@ -199,22 +200,7 @@ impl Command {
             },
             Command::ChangeText(range) => {
                 let text = input_mode();
-                let num_lines = text.len();
-                if num_lines == 0 {
-                    return Err(unknown());
-                }
-                let range = range.unwrap_or(LineRange::current_line())
-                                    .resolve(buffer, cfg)?;
-                let (start, end) = (range.0, range.1 + 1);
-                if !buffer.is_empty() {
-                    for _ in start..end {
-                        buffer.remove(start);
-                    }
-                }
-                insert_all(buffer, start, &text)?;
-                cfg.current_index += num_lines - 1;
-                cfg.dirty = true;
-                Ok(())
+                change_text::cmd(&text, range, buffer, cfg)
             },
             Command::Delete(range) => {
                 let range = range.unwrap_or(LineRange::current_line())
@@ -223,7 +209,7 @@ impl Command {
                 for _ in start..end {
                     buffer.remove(start);
                 }
-                cfg.current_index = start;
+                cfg.current_index = Some(start);
                 cfg.dirty = true;
                 Ok(())
             },
@@ -291,7 +277,7 @@ impl Command {
                     line.unwrap_or(Addr::period()).resolve(buffer, cfg)?
                 };
                 let _ = insert_all(buffer, line, &text);
-                cfg.current_index += text.len() - 1;
+                cfg.update_curidx(text.len() - 1);
                 cfg.dirty = true;
                 Ok(())
             },

@@ -5,19 +5,21 @@ use errors::*;
 
 pub fn cmd(text: &[String], line: Option<Addr>,
            buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
-    let position = line.unwrap_or(Addr::period())
-                        .resolve(buffer, cfg)?;
-    let position = if buffer.is_empty() {
-        0
+    let (position, next_cur) = if buffer.is_empty() {
+        cfg.current_index = Some(0);
+        (0, text.len() - 1)
     } else {
-        position + 1
+        let position = line.unwrap_or(Addr::period())
+                            .resolve(buffer, cfg)?;
+        cfg.current_index = Some(position);
+        (position + 1, text.len())
     };
-    let _ = insert_all(buffer, position, &text);
     let num_lines = text.len();
     if num_lines == 0 {
         return Err(unknown());
     }
-    cfg.current_index += num_lines - 1;
+    let _ = insert_all(buffer, position, &text);
+    cfg.update_curidx(next_cur);
     cfg.dirty = true;
     Ok(())
 }
@@ -55,6 +57,7 @@ mod tests {
         let res = cmd(&text, addr, &mut buffer, &mut config);
         assert!(res.is_ok());
         assert_eq!(&buffer, &text);
+        assert_eq!(config.current_index, Some(2));
     }
 
     #[test]
@@ -70,6 +73,7 @@ mod tests {
         let res = cmd(&text, addr, &mut buffer, &mut config);
         assert!(res.is_ok());
         assert_eq!(&buffer, &text);
+        assert_eq!(config.current_index, Some(2));
     }
 
     #[test]
@@ -83,6 +87,7 @@ mod tests {
             "this is already here".into(),
         ];
         let mut config = Config::default();
+        config.current_index = Some(0);
         let addr = Some(Addr::number(1));
         let res = cmd(&text, addr, &mut buffer, &mut config);
         let expected: Vec<String> = vec![
@@ -93,5 +98,22 @@ mod tests {
         ];
         assert!(res.is_ok());
         assert_eq!(&buffer, &expected);
+        assert_eq!(config.current_index, Some(3));
+    }
+
+    #[test]
+    fn empty_input_text_changes_current_line_to_addressed_line() {
+        let text = vec![];
+        let mut buffer = vec![
+            "the quick brown fox".into(),
+            "jumps over the lazy dog".into(),
+            "lorem ipsum".into(),
+        ];
+        let mut config = Config::default();
+        config.current_index = Some(2);
+        let addr = Some(Addr::number(2));
+        let _ = cmd(&text, addr, &mut buffer, &mut config);
+        assert_eq!(&buffer, &buffer); // buffer is unchanged
+        assert_eq!(config.current_index, Some(1));
     }
 }

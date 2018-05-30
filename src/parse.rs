@@ -76,7 +76,7 @@ impl Addr {
                     0
                 }
             },
-            LineAddr::Period => config.current_index as usize,
+            LineAddr::Period => config.current_index.unwrap_or(0usize) as usize,
             LineAddr::Mark(s) => match config.marks.get(&s) {
                 Some(u) => *u,
                 None => return Err("Mark not found".into()), 
