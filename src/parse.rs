@@ -356,4 +356,18 @@ named!(pub parse_line< &str, Command >,
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use commands::Command;
+
+    #[test]
+    fn test_write_command() {
+        let input = "w";
+        assert_finished_and_eq!(parse_line(input), Command::SaveFile(None, None));
+
+        let input = "w /tmp/filename";
+        assert_finished_and_eq!(parse_line(input), Command::SaveFile(None, Some("/tmp/filename".to_string())));
+
+        let input = "1,$w /tmp/filename";
+        assert_finished_and_eq!(parse_line(input), Command::SaveFile(Some(LineRange(Some(Addr::number(1)), Mode::Comma, Some(Addr::dollar_sign()))), Some("/tmp/filename".to_string())));
+    }
 }

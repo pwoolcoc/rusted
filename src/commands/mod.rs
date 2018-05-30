@@ -80,12 +80,14 @@ fn get_filename(filename: Option<String>, cfg: &mut Config) -> Option<String> {
     match filename {
         Some(f) => {
             if no_default {
+                debug!("no default filename, setting to {}", &f);
                 cfg.default_filename = Some(f.to_owned());
             }
             Some(f)
         },
         None => {
             if no_default {
+                debug!("no filename and no default filename :(");
                 None
             } else {
                 cfg.default_filename.clone()
@@ -111,7 +113,12 @@ fn save_file(start: usize, end: usize,
 
     let path = Path::new(&filename);
     if !path.exists() {
-        return Err(unknown());
+        debug!("file does not exist");
+        if confirm("file does not exist. create it?") {
+            open_options.create(true);
+        } else {
+            return Err("file does not exist".into());
+        }
     }
     let mut fp = match open_options.open(&path) {
         Ok(f) => f,
