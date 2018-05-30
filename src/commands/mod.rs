@@ -2,7 +2,7 @@ use parse::{LineRange, Addr};
 use {Buffer, Config, insert_all};
 use errors::*;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::fs::{File, OpenOptions};
 use std::io::{self, Write, BufRead, BufReader};
 
@@ -16,7 +16,7 @@ pub enum Command {
     ChangeText(Option<LineRange>),
     Delete(Option<LineRange>),
     EditFile(Option<String>),
-    UncondEditFile(Option<String>),
+    UncondEditFile(Option<PathBuf>),
     SetDefaultFilename(String),
     GetDefaultFilename,
     Global(Option<LineRange>, String, String),          // TODO
@@ -75,15 +75,16 @@ pub fn input_mode() -> Vec<String> {
     inp
 }
 
-fn get_filename(filename: Option<String>, cfg: &mut Config) -> Option<String> {
+fn get_filename(filename: Option<String>, cfg: &mut Config) -> Option<PathBuf> {
     let no_default = cfg.default_filename.is_none();
     match filename {
         Some(f) => {
+            let p: PathBuf = Path::new(&f).into();
             if no_default {
                 debug!("no default filename, setting to {}", &f);
-                cfg.default_filename = Some(f.to_owned());
+                cfg.default_filename = Some(p.clone());
             }
-            Some(f)
+            Some(p)
         },
         None => {
             if no_default {
@@ -101,15 +102,17 @@ fn save_file(start: usize, end: usize,
                 filename: Option<String>, buffer: &mut Buffer,
                 cfg: &mut Config) -> Result<()>
 {
+    if let Some(ref f) = filename {
+        // system command
+        if f.trim().starts_with("!") {
+            return Err(unknown());
+        }
+    }
+
     let filename = match get_filename(filename, cfg) {
         Some(f) => f,
         None => return Err("No filename".into()),
     };
-
-    if filename.trim().starts_with("!") {
-        // system command
-        return Err(unknown());
-    }
 
     let path = Path::new(&filename);
     if !path.exists() {
@@ -153,8 +156,8 @@ fn quit(cfg: &mut Config) -> Result<()> {
     }
 }
 
-fn edit_file(filename: &str, buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
-    let path = Path::new(filename);
+fn edit_file<P: AsRef<Path>>(filename: P, buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
+    let path = filename.as_ref();
     if !path.exists() {
         return Err(unknown());
     }
@@ -223,7 +226,7 @@ impl Command {
             Command::EditFile(filename) => {
                 let filename = match filename {
                     Some(filename) => {
-                        filename
+                        Path::new(&filename).into()
                     },
                     None => {
                         if cfg.default_filename.is_none() {
@@ -260,7 +263,7 @@ impl Command {
             Command::GetDefaultFilename => {
                 match cfg.default_filename {
                     Some(ref f) => {
-                        debug!("default filename: {}", f);
+                        debug!("default filename: {:?}", f);
                         return Ok(());
                     },
                     None => return Err(unknown()),

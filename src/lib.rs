@@ -8,6 +8,7 @@ use std::io::{self, Write};
 use std::default::Default;
 use std::collections::HashMap;
 use std::process;
+use std::path::PathBuf;
 
 use errors::*;
 
@@ -18,7 +19,7 @@ pub struct Config {
     pub dirty: bool,
     pub show_prompt: bool,
     pub current_index: Option<usize>,
-    pub default_filename: Option<String>,
+    pub default_filename: Option<PathBuf>,
     pub cut_buffer: Vec<String>,
     pub marks: HashMap<char, usize>,
     pub last_error: Option<String>,
