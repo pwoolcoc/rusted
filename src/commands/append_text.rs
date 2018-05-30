@@ -7,7 +7,11 @@ pub fn cmd(text: &[String], line: Option<Addr>,
            buffer: &mut Buffer, cfg: &mut Config) -> Result<()> {
     let (position, next_cur) = if buffer.is_empty() {
         cfg.current_index = Some(0);
-        (0, text.len() - 1)
+        (0, if text.len() == 0 {
+            0
+         } else {
+            text.len() - 1
+        })
     } else {
         let position = line.unwrap_or(Addr::period())
                             .resolve(buffer, cfg)?;
@@ -29,6 +33,16 @@ mod tests {
     use {Config};
     use parse::Addr;
     use super::cmd;
+
+    #[test]
+    fn empty_buffer_empty_input() {
+        let text = vec![];
+        let mut buffer = vec![];
+        let mut config = Config::default();
+        let res = cmd(&text, None, &mut buffer, &mut config);
+        assert!(res.is_err());
+        assert_eq!(&buffer, &text);
+    }
 
     #[test]
     fn default_line_empty_buffer() {
